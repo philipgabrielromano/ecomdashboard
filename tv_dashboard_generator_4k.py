@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate a responsive browser-rendered dashboard from Upright Labs / Lister sales data."""
+"""Generate a fixed 16:9 single-screen dashboard from Upright Labs / Lister sales data."""
 
 from __future__ import annotations
 
@@ -85,7 +85,7 @@ def default_json_path(html_path: str) -> str:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Generate a responsive browser-rendered dashboard from Upright Labs sold-item data."
+        description="Generate a fixed 16:9 single-screen dashboard from Upright Labs sold-item data."
     )
     parser.add_argument("--token", help="API token. If omitted, uses UPRIGHTLABS_API_TOKEN from .env or the environment.")
     parser.add_argument("--start", help="ISO8601 start datetime. Defaults to .env value or last three days.")
@@ -105,7 +105,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--image-mode", choices=("remote", "none"), help="Use API image URLs directly, or disable images.")
     parser.add_argument("--logo-path", default=DEFAULT_LOGO_PATH, help="Path to logo image for embedding.")
     parser.add_argument("--refresh-seconds", type=int, default=300, help="Auto-refresh interval in seconds.")
-    parser.add_argument("--no-png", action="store_true", help="Skip PNG generation and only write the HTML/JSON outputs.")
+    parser.add_argument("--no-png", action="store_true", help="Skip PNG generation and only write HTML/JSON outputs.")
     parser.add_argument("--verbose", action="store_true", help="Print progress information.")
     return parser.parse_args()
 
@@ -145,7 +145,7 @@ def build_session(token: str) -> requests.Session:
     session.headers.update({
         "X-Authorization": token,
         "Accept": "application/json, text/plain, */*",
-        "User-Agent": "uprightlabs-responsive-dashboard/1.0",
+        "User-Agent": "uprightlabs-single-screen-dashboard/1.0",
     })
     return session
 
@@ -220,7 +220,7 @@ const path = require("path");
   await page.emulateMedia({{ media: "screen" }});
   await page.screenshot({{
     path: path.resolve({json.dumps(png_path)}),
-    fullPage: true
+    fullPage: false
   }});
   await browser.close();
 }})().catch(err => {{ console.error(err); process.exit(1); }});
@@ -477,16 +477,13 @@ def compute_summary(items: List[Dict[str, Any]], featured: List[Dict[str, Any]])
     quantities = [int(i.get("quantity") or 0) for i in items]
     suppliers = Counter(str(i.get("supplier") or "Unknown supplier") for i in items)
     top_item = max(featured, key=lambda x: x.get("item_price", 0.0), default=None)
-    brand_summary = compute_brand_summary(items)
     return {
         "total_items": len(items),
         "total_units": sum(quantities),
         "revenue": revenue,
         "avg_price": statistics.mean(prices) if prices else 0.0,
-        "median_price": statistics.median(prices) if prices else 0.0,
-        "max_price": max(prices) if prices else 0.0,
         "top_suppliers": suppliers.most_common(6),
-        "brand_summary": brand_summary,
+        "brand_summary": compute_brand_summary(items),
         "highest_item": top_item,
     }
 
@@ -495,7 +492,7 @@ def esc(value: Any) -> str:
     return html.escape(str(value or ""))
 
 
-def truncate_text(value: str, limit: int = 78) -> str:
+def truncate_text(value: str, limit: int = 70) -> str:
     value = re.sub(r"\s+", " ", str(value or "")).strip()
     if len(value) <= limit:
         return value
@@ -613,16 +610,18 @@ def render_html(
       --goodwill-primary: #4F87C6;
       --goodwill-light: #B2D235;
       --bg-panel: rgba(255,255,255,0.97);
-      --shadow: 0 16px 40px rgba(0, 0, 0, 0.18);
-      --radius: 24px;
-      --space: clamp(12px, 1.2vw, 24px);
+      --shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
+      --radius: 20px;
+      --gap: min(1vw, 18px);
     }}
 
     * {{ box-sizing: border-box; }}
 
     html, body {{
       margin: 0;
-      min-height: 100%;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
       font-family: 'Lato', Arial, Helvetica, sans-serif;
       background:
         radial-gradient(circle at top right, rgba(178,210,53,0.18), transparent 20%),
@@ -635,40 +634,43 @@ def render_html(
     }}
 
     .page {{
-      width: 100%;
-      max-width: 1800px;
-      margin: 0 auto;
-      padding: clamp(16px, 2vw, 36px);
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      padding: 1vw;
       display: grid;
-      gap: var(--space);
+      grid-template-rows: 15.5vh 11vh 1fr 3vh;
+      gap: var(--gap);
     }}
 
     .hero {{
       background: rgba(255,255,255,0.10);
       border: 1px solid rgba(255,255,255,0.18);
-      border-radius: 28px;
+      border-radius: 24px;
       box-shadow: var(--shadow);
       color: white;
-      padding: clamp(18px, 2vw, 30px);
+      padding: 1vw 1.2vw;
       display: grid;
       grid-template-columns: auto 1fr auto;
-      gap: var(--space);
+      gap: var(--gap);
       align-items: center;
+      min-height: 0;
     }}
 
     .logo-shell {{
       background: rgba(255,255,255,0.96);
-      border-radius: 22px;
-      padding: 12px;
+      border-radius: 18px;
+      padding: 0.5vw;
       display: flex;
       align-items: center;
       justify-content: center;
-      min-width: 92px;
-      min-height: 92px;
+      width: 5.4vw;
+      height: 5.4vw;
+      min-width: 72px;
+      min-height: 72px;
     }}
 
     .logo-shell img {{
-      max-width: 110px;
       width: 100%;
       height: auto;
       display: block;
@@ -676,75 +678,77 @@ def render_html(
 
     .hero-copy h1 {{
       margin: 0;
-      font-size: clamp(2rem, 4vw, 4rem);
+      font-size: clamp(2rem, 3.2vw, 4rem);
       line-height: 1.02;
       font-weight: 900;
     }}
 
     .hero-subline {{
-      margin-top: 8px;
-      font-size: clamp(1rem, 1.5vw, 1.5rem);
+      margin-top: 0.35vw;
+      font-size: clamp(0.95rem, 1.15vw, 1.4rem);
       font-weight: 700;
-      color: rgba(255,255,255,0.9);
+      color: rgba(255,255,255,0.90);
     }}
 
     .org-name {{
-      margin-top: 6px;
-      font-size: clamp(0.95rem, 1.2vw, 1.2rem);
-      color: rgba(255,255,255,0.88);
+      margin-top: 0.2vw;
+      font-size: clamp(0.85rem, 0.95vw, 1.15rem);
+      color: rgba(255,255,255,0.86);
       font-weight: 700;
     }}
 
     .report-box {{
       background: rgba(255,255,255,0.14);
       border-left: 6px solid var(--goodwill-light);
-      border-radius: 18px;
-      padding: 14px 16px;
-      min-width: min(34vw, 360px);
+      border-radius: 16px;
+      padding: 0.8vw 0.9vw;
+      min-width: 17vw;
     }}
 
     .report-label {{
       text-transform: uppercase;
       letter-spacing: .08em;
-      font-size: 0.8rem;
+      font-size: 0.72rem;
       color: rgba(255,255,255,.84);
-      margin-bottom: 6px;
+      margin-bottom: 0.3vw;
     }}
 
     .report-value {{
-      font-size: clamp(1.1rem, 2vw, 1.8rem);
+      font-size: clamp(1rem, 1.6vw, 1.7rem);
       font-weight: 900;
       color: white;
-      line-height: 1.2;
+      line-height: 1.15;
     }}
 
     .kpi-row {{
       display: grid;
       grid-template-columns: repeat(5, minmax(0, 1fr));
-      gap: var(--space);
+      gap: var(--gap);
+      min-height: 0;
     }}
 
     .kpi-card {{
       background: rgba(255,255,255,0.98);
-      border-top: 8px solid var(--goodwill-light);
-      border-radius: 20px;
+      border-top: 6px solid var(--goodwill-light);
+      border-radius: 18px;
       box-shadow: var(--shadow);
-      padding: 16px 18px 14px;
+      padding: 0.75vw 0.9vw;
       min-width: 0;
+      overflow: hidden;
     }}
 
     .kpi-label {{
       color: var(--goodwill-gray);
       text-transform: uppercase;
       letter-spacing: .08em;
-      font-size: 0.78rem;
+      font-size: 0.72rem;
       font-weight: 700;
     }}
 
     .kpi-value {{
-      margin-top: 10px;
+      margin-top: 0.45vw;
       color: var(--goodwill-blue);
-      font-size: clamp(1.25rem, 2vw, 2.2rem);
+      font-size: clamp(1.15rem, 1.9vw, 2.05rem);
       line-height: 1.05;
       font-weight: 900;
       white-space: nowrap;
@@ -754,9 +758,10 @@ def render_html(
 
     .main {{
       display: grid;
-      grid-template-columns: 1.8fr 1fr;
-      gap: var(--space);
-      align-items: start;
+      grid-template-columns: 1.75fr 1fr;
+      gap: var(--gap);
+      min-height: 0;
+      overflow: hidden;
     }}
 
     .panel {{
@@ -764,40 +769,49 @@ def render_html(
       border-radius: var(--radius);
       box-shadow: var(--shadow);
       overflow: hidden;
+      min-height: 0;
     }}
 
     .panel-header {{
-      padding: 16px 20px 12px;
+      padding: 0.8vw 1vw 0.65vw;
       border-bottom: 2px solid rgba(178,210,53,0.55);
       color: var(--goodwill-blue);
-      font-size: clamp(1.2rem, 1.8vw, 2rem);
+      font-size: clamp(1.1rem, 1.5vw, 1.8rem);
       font-weight: 900;
       background: linear-gradient(180deg, rgba(79,135,198,0.08), rgba(79,135,198,0.02));
     }}
 
-    .featured-grid {{
-      padding: var(--space);
+    .featured-panel {{
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
-      gap: var(--space);
+      grid-template-rows: auto 1fr;
+      min-height: 0;
+    }}
+
+    .featured-grid {{
+      padding: var(--gap);
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: var(--gap);
+      min-height: 0;
+      overflow: hidden;
     }}
 
     .item-card {{
       background: white;
       border: 2px solid rgba(0,83,159,0.10);
-      border-top: 8px solid var(--goodwill-light);
-      border-radius: 20px;
+      border-top: 6px solid var(--goodwill-light);
+      border-radius: 18px;
       overflow: hidden;
       display: grid;
-      grid-template-rows: 52px 240px auto 1fr;
-      min-height: 100%;
+      grid-template-rows: 44px 16vh auto 1fr;
+      min-height: 0;
     }}
 
     .item-rank {{
       background: var(--goodwill-blue);
       color: white;
       font-weight: 900;
-      font-size: clamp(1.1rem, 1.8vw, 1.8rem);
+      font-size: clamp(1rem, 1.4vw, 1.5rem);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -809,22 +823,21 @@ def render_html(
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 12px;
-      min-height: 220px;
+      padding: 0.7vw;
+      min-height: 0;
     }}
 
     .item-media img {{
       width: 100%;
       height: 100%;
-      max-height: 240px;
       object-fit: contain;
-      border-radius: 14px;
+      border-radius: 12px;
       background: white;
     }}
 
     .image-placeholder {{
       color: var(--goodwill-gray);
-      font-size: 1rem;
+      font-size: 0.95rem;
       font-weight: 700;
       text-align: center;
     }}
@@ -832,35 +845,35 @@ def render_html(
     .supplier-ribbon {{
       background: var(--goodwill-light);
       color: var(--goodwill-dark);
-      font-size: clamp(0.9rem, 1.2vw, 1.15rem);
+      font-size: clamp(0.85rem, 1vw, 1rem);
       font-weight: 900;
       letter-spacing: .03em;
-      padding: 10px 14px;
+      padding: 0.5vw 0.75vw;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }}
 
     .item-body {{
-      padding: 14px 16px 16px;
+      padding: 0.7vw 0.85vw 0.8vw;
       display: grid;
-      grid-template-rows: 3.2em auto auto auto;
-      gap: 8px;
-      min-width: 0;
+      grid-template-rows: 3em auto auto auto;
+      gap: 0.45vw;
+      min-height: 0;
     }}
 
     .item-body h3 {{
       margin: 0;
-      font-size: clamp(1.05rem, 1.4vw, 1.4rem);
-      line-height: 1.12;
+      font-size: clamp(1rem, 1.15vw, 1.2rem);
+      line-height: 1.08;
       font-weight: 800;
       color: var(--goodwill-dark);
       display: -webkit-box;
       -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
       overflow: hidden;
-      min-height: 2.25em;
-      max-height: 2.25em;
+      min-height: 2.2em;
+      max-height: 2.2em;
     }}
 
     .price-row {{
@@ -871,15 +884,15 @@ def render_html(
     }}
 
     .price {{
-      font-size: clamp(1.35rem, 2vw, 2rem);
+      font-size: clamp(1.2rem, 1.6vw, 1.75rem);
       line-height: 1;
       font-weight: 900;
       color: var(--goodwill-blue);
     }}
 
     .details-row {{
-      font-size: clamp(0.84rem, 1vw, 1rem);
-      line-height: 1.2;
+      font-size: clamp(0.78rem, 0.88vw, 0.92rem);
+      line-height: 1.15;
       color: var(--goodwill-gray);
       font-weight: 700;
       white-space: nowrap;
@@ -890,8 +903,7 @@ def render_html(
     .actions {{
       display: flex;
       align-items: end;
-      gap: 10px;
-      margin-top: 4px;
+      margin-top: 0.2vw;
     }}
 
     .button {{
@@ -899,11 +911,12 @@ def render_html(
       text-decoration: none;
       background: var(--goodwill-blue);
       color: white;
-      padding: 9px 12px;
+      padding: 0.5vw 0.7vw;
       border-radius: 10px;
-      font-size: 0.9rem;
+      font-size: 0.85rem;
       font-weight: 800;
       border: 2px solid var(--goodwill-light);
+      white-space: nowrap;
     }}
 
     .button.disabled {{
@@ -912,21 +925,23 @@ def render_html(
       color: #4b5458;
     }}
 
-    .empty-state {{
-      padding: 40px;
-      color: var(--goodwill-gray);
-      font-size: 1.2rem;
-      font-weight: 700;
-      text-align: center;
-    }}
-
     .side-stack {{
       display: grid;
-      gap: var(--space);
+      grid-template-rows: 1fr 1fr 1fr;
+      gap: var(--gap);
+      min-height: 0;
+      overflow: hidden;
+    }}
+
+    .list-panel {{
+      display: grid;
+      grid-template-rows: auto 1fr;
+      min-height: 0;
     }}
 
     .list-panel-body {{
-      padding: 14px 20px 18px;
+      padding: 0.6vw 1vw 0.8vw;
+      overflow: hidden;
     }}
 
     .list-panel ul {{
@@ -938,11 +953,11 @@ def render_html(
     .list-panel li {{
       display: grid;
       grid-template-columns: 1fr auto;
-      gap: 14px;
+      gap: 10px;
       align-items: baseline;
-      padding: 12px 0;
+      padding: 0.52vw 0;
       border-bottom: 1px solid rgba(0,83,159,0.10);
-      font-size: clamp(0.95rem, 1.2vw, 1.15rem);
+      font-size: clamp(0.92rem, 1vw, 1.08rem);
     }}
 
     .list-panel li:last-child {{
@@ -967,11 +982,12 @@ def render_html(
     .footer {{
       display: grid;
       grid-template-columns: 1fr auto auto;
-      gap: 18px;
+      gap: 16px;
       align-items: center;
       color: rgba(255,255,255,0.92);
-      font-size: 0.95rem;
-      padding: 0 4px 12px;
+      font-size: 0.82rem;
+      padding: 0 0.2vw;
+      min-height: 0;
     }}
 
     .footer .left {{
@@ -984,29 +1000,15 @@ def render_html(
       font-weight: 700;
     }}
 
-    @media (max-width: 1180px) {{
-      .hero {{
-        grid-template-columns: 1fr;
-      }}
-      .report-box {{
-        min-width: 0;
-      }}
-      .kpi-row {{
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-      }}
-      .main {{
-        grid-template-columns: 1fr;
-      }}
-    }}
-
-    @media (max-width: 860px) {{
-      .kpi-row {{
-        grid-template-columns: 1fr;
-      }}
-      .footer {{
-        grid-template-columns: 1fr;
-        text-align: center;
-      }}
+    .empty-state {{
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--goodwill-gray);
+      font-size: 1.1rem;
+      font-weight: 700;
+      text-align: center;
+      min-height: 100%;
     }}
   </style>
 </head>
@@ -1030,7 +1032,7 @@ def render_html(
     </section>
 
     <section class="main">
-      <section class="panel">
+      <section class="panel featured-panel">
         <div class="panel-header">Featured Items</div>
         <div class="featured-grid">
           {build_featured_cards(featured)}
@@ -1062,7 +1064,7 @@ def render_html(
     </section>
 
     <footer class="footer">
-      <div class="left">Generated by responsive dashboard using Upright Labs data.</div>
+      <div class="left">Generated by single-screen dashboard using Upright Labs data.</div>
       <div class="right">Generated: {esc(fmt_generated_at(generated_at))}</div>
       <div class="right">Auto-refresh: {int(args.refresh_seconds)}s</div>
     </footer>
@@ -1148,7 +1150,7 @@ def main() -> None:
     verbose = True if args.verbose else True
     generated_at = datetime.now(timezone.utc)
 
-    log("Starting responsive dashboard generation...", verbose)
+    log("Starting fixed 16:9 single-screen dashboard generation...", verbose)
     log(f"  Title: {args.title}", verbose)
     log(f"  HTML Output: {args.output}", verbose)
     log(f"  PNG Output: {args.png_output}", verbose)
@@ -1156,10 +1158,8 @@ def main() -> None:
     log(f"  Date window: {args.start} -> {args.end}", verbose)
     log(f"  Sort mode: {args.sort}", verbose)
     log(f"  Top featured items requested: {args.top}", verbose)
-    log("  Business rules: jewelry excluded, supplier emphasized, responsive browser rendering enabled", verbose)
 
     token = require_token(args.token)
-    log("Token loaded successfully.", verbose)
     session = build_session(token)
 
     items = fetch_order_items(session, args.start, args.end, verbose=verbose)
@@ -1174,9 +1174,8 @@ def main() -> None:
     log(f"[4/5] Ranked items by '{args.sort}' and selected {len(featured_raw)} featured items", verbose)
 
     shared_cache: Dict[str, Dict[str, Any]] = {}
-    log(f"[5/5] Enriching {len(featured_raw)} featured items with product details and images...", verbose)
     featured = enrich_items(session, featured_raw, args, product_cache=shared_cache)
-    log("      featured enrichment complete", verbose)
+    log("[5/5] Feature enrichment complete", verbose)
 
     summary = compute_summary(filtered, featured)
     output_html = render_html(args, summary, featured, generated_at)
@@ -1192,12 +1191,12 @@ def main() -> None:
     if not args.no_png:
         png_path = Path(args.png_output)
         png_path.parent.mkdir(parents=True, exist_ok=True)
-        log("      generating optional PNG snapshot...", verbose)
         html_to_png(str(output_path), str(png_path), width=1920, height=1080)
-        log(f"Completed. PNG written to {png_path}", verbose)
 
     log(f"Completed. HTML written to {output_path}", verbose)
     log(f"Completed. JSON written to {json_path}", verbose)
+    if not args.no_png:
+        log(f"Completed. PNG written to {png_path}", verbose)
 
 
 if __name__ == "__main__":
