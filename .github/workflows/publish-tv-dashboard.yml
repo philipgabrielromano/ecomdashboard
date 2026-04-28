@@ -42,7 +42,7 @@ jobs:
         env:
           UPRIGHTLABS_API_TOKEN: ${{ secrets.UPRIGHTLABS_API_TOKEN }}
         run: |
-          python newsletter_generator.py \
+          python tv_dashboard_generator_4k.py \
             --output docs/index.html \
             --png-output docs/dashboard.png \
             --title "eCommerce Dashboard"
