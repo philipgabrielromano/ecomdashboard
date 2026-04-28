@@ -206,10 +206,6 @@ def logo_data_uri(path: str = DEFAULT_LOGO_PATH) -> str:
     return f"data:{mime};base64,{encoded}"
 
 
-def default_json_payload_path(html_path: str) -> str:
-    return str(Path(html_path).with_name("latest.json"))
-
-
 def html_to_png(html_path: str, png_path: str, width: int = 1920, height: int = 1080) -> None:
     script = f'''
 const {{ chromium }} = require("playwright");
@@ -234,7 +230,7 @@ const path = require("path");
 
 def fetch_order_items(session: requests.Session, start: str, end: str, verbose: bool = False) -> List[Dict[str, Any]]:
     params = {"time_start": start, "time_end": end}
-    log(f"[1/6] Requesting sold items report for {start} -> {end}", verbose)
+    log(f"[1/5] Requesting sold items report for {start} -> {end}", verbose)
     payload = api_get(session, "/reports/order_items", params=params)
     items = payload.get("data", [])
     if not isinstance(items, list):
@@ -251,8 +247,7 @@ def normalize_tag_list(value: Any) -> List[str]:
 
 
 def is_jewelry_category(value: Any) -> bool:
-    text = str(value or "").lower()
-    return "jewelry" in text
+    return "jewelry" in str(value or "").lower()
 
 
 def filter_order_items(items: Iterable[Dict[str, Any]], args: argparse.Namespace) -> List[Dict[str, Any]]:
@@ -319,16 +314,13 @@ def enrich_items(
     items: List[Dict[str, Any]],
     args: argparse.Namespace,
     product_cache: Optional[Dict[str, Dict[str, Any]]] = None,
-    progress_label: str = "items",
 ) -> List[Dict[str, Any]]:
     enriched: List[Dict[str, Any]] = []
     product_cache = product_cache if product_cache is not None else {}
     fetched_count = 0
-    total = len(items)
-    for index, item in enumerate(items, start=1):
+
+    for item in items:
         product_id = item.get("upright_product_id") or item.get("product_id")
-        if args.verbose:
-            log(f"      processing {progress_label} {index}/{total}", True)
         if not product_id:
             product = {}
         else:
@@ -340,8 +332,7 @@ def enrich_items(
                     product_cache[key] = fetch_product(session, product_id, verbose=args.verbose)
                     fetched_count += 1
             product = product_cache[key]
-        image_url = select_primary_image(product, args.image_mode)
-        paid_at = parse_report_datetime(item.get("order_paid_at"))
+
         enriched.append({
             "report": item,
             "product": product,
@@ -351,9 +342,9 @@ def enrich_items(
             "category": (product.get("category") or {}).get("path_cache") or item.get("product_category") or "",
             "supplier": (product.get("supplier") or {}).get("name") or item.get("supplier") or "",
             "inventory_location": (product.get("inventory_location") or {}).get("name") or item.get("inventory_location") or "",
-            "image_url": image_url,
+            "image_url": select_primary_image(product, args.image_mode),
             "listing_url": extract_listing_url(product),
-            "paid_at": paid_at,
+            "paid_at": parse_report_datetime(item.get("order_paid_at")),
             "item_price": safe_float(item.get("order_item_price")),
             "item_subtotal": safe_float(item.get("order_item_subtotal")),
             "quantity": int(item.get("quantity") or 0),
@@ -575,16 +566,14 @@ def build_featured_cards(featured: List[Dict[str, Any]]) -> str:
             <article class="item-card">
               <div class="item-rank">#{index}</div>
               <div class="item-media">{image_html}</div>
-              <div class="item-content">
-                <div class="supplier-ribbon">{esc((item.get("supplier") or "Unknown Supplier").upper())}</div>
-                <div class="item-body">
-                  <h3>{esc(truncate_text(item["title"]))}</h3>
-                  <div class="price-row">
-                    <span class="price">{fmt_currency(item["item_price"])}</span>
-                  </div>
-                  <div class="details-row">{esc(details_line)}</div>
-                  <div class="actions">{listing_link}</div>
+              <div class="supplier-ribbon">{esc((item.get("supplier") or "Unknown Supplier").upper())}</div>
+              <div class="item-body">
+                <h3>{esc(truncate_text(item["title"]))}</h3>
+                <div class="price-row">
+                  <span class="price">{fmt_currency(item["item_price"])}</span>
                 </div>
+                <div class="details-row">{esc(details_line)}</div>
+                <div class="actions">{listing_link}</div>
               </div>
             </article>
             '''
@@ -789,7 +778,7 @@ def render_html(
     .featured-grid {{
       padding: var(--space);
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
       gap: var(--space);
     }}
 
@@ -800,7 +789,7 @@ def render_html(
       border-radius: 20px;
       overflow: hidden;
       display: grid;
-      grid-template-columns: 64px minmax(220px, 32%) 1fr;
+      grid-template-rows: 52px 240px auto 1fr;
       min-height: 100%;
     }}
 
@@ -816,8 +805,7 @@ def render_html(
 
     .item-media {{
       background: #f6fbdc;
-      border-left: 1px solid rgba(0,83,159,0.08);
-      border-right: 1px solid rgba(0,83,159,0.08);
+      border-bottom: 1px solid rgba(0,83,159,0.08);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -839,12 +827,6 @@ def render_html(
       font-size: 1rem;
       font-weight: 700;
       text-align: center;
-    }}
-
-    .item-content {{
-      display: grid;
-      grid-template-rows: auto 1fr;
-      min-width: 0;
     }}
 
     .supplier-ribbon {{
@@ -1021,15 +1003,6 @@ def render_html(
       .kpi-row {{
         grid-template-columns: 1fr;
       }}
-      .item-card {{
-        grid-template-columns: 1fr;
-      }}
-      .item-rank {{
-        min-height: 54px;
-      }}
-      .item-media {{
-        min-height: 240px;
-      }}
       .footer {{
         grid-template-columns: 1fr;
         text-align: center;
@@ -1190,23 +1163,22 @@ def main() -> None:
     session = build_session(token)
 
     items = fetch_order_items(session, args.start, args.end, verbose=verbose)
-    log(f"[2/6] Retrieved {len(items)} sold item rows from the report", verbose)
+    log(f"[2/5] Retrieved {len(items)} sold item rows from the report", verbose)
 
     filtered = filter_order_items(items, args)
     excluded = len(items) - len(filtered)
-    log(f"[3/6] Applied filters and business rules. {len(filtered)} items remain; {excluded} excluded", verbose)
+    log(f"[3/5] Applied filters and business rules. {len(filtered)} items remain; {excluded} excluded", verbose)
 
     ranked = sort_items(filtered, args.sort)
     featured_raw = ranked[: args.top]
-    log(f"[4/6] Ranked items by '{args.sort}' and selected {len(featured_raw)} featured items", verbose)
+    log(f"[4/5] Ranked items by '{args.sort}' and selected {len(featured_raw)} featured items", verbose)
 
     shared_cache: Dict[str, Dict[str, Any]] = {}
-    log(f"[5/6] Enriching {len(featured_raw)} featured items with product details and images...", verbose)
-    featured = enrich_items(session, featured_raw, args, product_cache=shared_cache, progress_label="featured item")
+    log(f"[5/5] Enriching {len(featured_raw)} featured items with product details and images...", verbose)
+    featured = enrich_items(session, featured_raw, args, product_cache=shared_cache)
     log("      featured enrichment complete", verbose)
 
     summary = compute_summary(filtered, featured)
-    log("[6/6] Rendering responsive HTML dashboard...", verbose)
     output_html = render_html(args, summary, featured, generated_at)
 
     output_path = Path(args.output)
