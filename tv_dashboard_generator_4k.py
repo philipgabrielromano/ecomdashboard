@@ -262,6 +262,12 @@ def filter_order_items(items: Iterable[Dict[str, Any]], args: argparse.Namespace
             continue
         if args.category and args.category.lower() not in str(item.get("product_category", "")).lower():
             continue
+            
+        # --- NEW CODE: Exclude "bulk all the things" in any case combination ---
+        if str(item.get("supplier", "")).strip().lower() == "bulk all the things":
+            continue
+        # -----------------------------------------------------------------------
+
         if args.supplier and args.supplier.lower() not in str(item.get("supplier", "")).lower():
             continue
         item_tags = {t.lower() for t in normalize_tag_list(item.get("tags"))}
